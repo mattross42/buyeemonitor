@@ -12,14 +12,14 @@ DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 # Your search terms - EDIT THESE
 SEARCH_TERMS = [
     "disney pin",
-    "ディズニーピン"
-    "https://buyee.jp/mercari/search?keyword=ディズニー&category_id=975&status=on_sale&order-sort=desc-created_time"
-    "https://buyee.jp/mercari/search?keyword=disneyー&category_id=975&status=on_sale&order-sort=desc-created_time"
-    "https://buyee.jp/mercari/search?keyword=ピクサー&category_id=975&order-sort=desc-created_time&currencyCode=USD&status=on_sale"
-    "https://buyee.jp/mercari/search?keyword=スター%20ウォーズ&category_id=975&order-sort=desc-created_time&currencyCode=USD&status=on_sale"
-    "https://buyee.jp/mercari/search?keyword=ステッチ&category_id=975&order-sort=desc-created_time&currencyCode=USD&status=on_sale"
-    "https://buyee.jp/item/search/category/44364/?translationType="
-    "https://buyee.jp/item/search/customer/BjCllhCJlQpvtQdrH9Ua%2BZXaBYe3II6vLXlQMb3AXrE%3D/?translationType="
+    "ディズニーピン",
+    "https://buyee.jp/mercari/search?keyword=ディズニー&category_id=975&status=on_sale&order-sort=desc-created_time",
+    "https://buyee.jp/mercari/search?keyword=disneyー&category_id=975&status=on_sale&order-sort=desc-created_time",
+    "https://buyee.jp/mercari/search?keyword=ピクサー&category_id=975&order-sort=desc-created_time&currencyCode=USD&status=on_sale",
+    "https://buyee.jp/mercari/search?keyword=スター%20ウォーズ&category_id=975&order-sort=desc-created_time&currencyCode=USD&status=on_sale",
+    "https://buyee.jp/mercari/search?keyword=ステッチ&category_id=975&order-sort=desc-created_time&currencyCode=USD&status=on_sale",
+    "https://buyee.jp/item/search/category/44364/?translationType=",
+    "https://buyee.jp/item/search/customer/BjCllhCJlQpvtQdrH9Ua%2BZXaBYe3II6vLXlQMb3AXrE%3D/?translationType=",
 ]
 
 # Initialize Supabase
