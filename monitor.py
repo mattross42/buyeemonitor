@@ -276,6 +276,13 @@ def parse_flippah(raw_bytes):
 
     items = []
     for idx, block in enumerate(blocks):
+        title = block[0]
+
+        # Skip non-new-listing alerts (ending-soon / price-drop)
+        low = title.lower()
+        if low.startswith("auction ending") or low.startswith("price reduced") or low.startswith("priced reduced"):
+            continue
+
         price = None
         for l in block:
             pm = re.search(r'\$(\d+(?:\.\d{2})?)', l)
