@@ -52,8 +52,7 @@ SEARCH_TERMS = [
     "私ときどきレッサーパンダ", "ベイマックス", "ズートピア",
     # --- Star Wars (both spellings) ---
     "スターウォーズ", "スター・ウォーズ", "STAR WARS", "ダースベイダー", "ヨーダ",
-    "グローグー", "ベビーヨーダ", "マンダロリアン", "R2-D2", "C-3PO", "BB-8",
-    "ストームトルーパー", "チューバッカ", "ボバフェット", "レイ", "カイロレン",
+    "グローグー", "ベビーヨーダ", "マンダロリアン",
 ]
 
 EBAY_SEARCH_TERMS = [
@@ -184,17 +183,17 @@ async def scrape_ebay():
     new_items = []
     for keyword, min_price in EBAY_SEARCH_TERMS:
         print(f"Searching eBay: {keyword}" + (f" (min ${min_price})" if min_price else ""))
-        try:
+      try:
             url = f"https://www.ebay.com/rss/search/listings?_nkw={quote(keyword)}&_sop=12&_ipg=100"
             if min_price:
                 url += f"&_udlo={min_price}"
             feed = feedparser.parse(url)
-if feed.bozo:
-    print(f"  Feed error: {feed.bozo_exception}")
-    
-print(f"  -> {len(feed.entries)} items")
-            
+            if feed.bozo:
+                print(f"  Feed error: {feed.bozo_exception}")
             print(f"  -> {len(feed.entries)} items")
+            ...rest of loop...
+        except Exception as e:
+            print(f"  eBay error: {e}")
             
             for entry in feed.entries[:50]:
                 title = entry.get("title", "(no title)")
