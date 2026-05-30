@@ -295,22 +295,26 @@ def parse_flippah(raw_bytes):
 
 def parse_yahoo(html, term):
     items = []
-    # Each listing links to /jp/auction/{id}; capture id + title
+    # Pull all listing images in document order
+    images = re.findall(r'(https://[a-z-]+\.c\.yimg\.jp/[^\s"\'<>]+\.jpg[^\s"\'<>]*)', html)
     pattern = re.compile(
         r'/jp/auction/([a-z]?\d+)"[^>]*title="([^"]+)"', re.IGNORECASE
     )
     seen = set()
+    idx = 0
     for m in pattern.finditer(html):
         item_id, title = m.group(1), m.group(2)
         if item_id in seen:
             continue
         seen.add(item_id)
+        img = images[idx] if idx < len(images) else None
+        idx += 1
         items.append({
             "item_url": f"https://buyee.jp/item/yahoo/auction/{item_id}",
             "title": title.strip(),
-            "price": None,          # price parsing below is approximate; left blank if unsure
+            "price": None,
             "search_term": term,
-            "image_url": None,
+            "image_url": img,
             "seller": "YahooAuctions",
         })
     return items
