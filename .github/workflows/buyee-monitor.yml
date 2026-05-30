@@ -17,8 +17,8 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install mercapi supabase requests "httpx==0.27.2"
-
+        run: pip install mercapi supabase requests deep-translator "httpx==0.27.2"
+        
       - name: Run Buyee monitor
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
