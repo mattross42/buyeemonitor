@@ -185,11 +185,15 @@ async def scrape_ebay():
     for keyword, min_price in EBAY_SEARCH_TERMS:
         print(f"Searching eBay: {keyword}" + (f" (min ${min_price})" if min_price else ""))
         try:
-            from urllib.parse import quote
             url = f"https://www.ebay.com/rss/search/listings?_nkw={quote(keyword)}&_sop=12&_ipg=100"
             if min_price:
                 url += f"&_udlo={min_price}"
             feed = feedparser.parse(url)
+if feed.bozo:
+    print(f"  Feed error: {feed.bozo_exception}")
+    
+print(f"  -> {len(feed.entries)} items")
+            
             print(f"  -> {len(feed.entries)} items")
             
             for entry in feed.entries[:50]:
