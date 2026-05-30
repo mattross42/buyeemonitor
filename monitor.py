@@ -188,7 +188,7 @@ async def scrape_ebay():
             from urllib.parse import quote
             url = f"https://www.ebay.com/rss/search/listings?_nkw={quote(keyword)}&_sop=12&_ipg=100"
             if min_price:
-            url += f"&_udlo={min_price}"
+                url += f"&_udlo={min_price}"
             feed = feedparser.parse(url)
             print(f"  -> {len(feed.entries)} items")
             
