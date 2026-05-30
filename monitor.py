@@ -183,7 +183,7 @@ async def scrape_ebay():
     new_items = []
     for keyword, min_price in EBAY_SEARCH_TERMS:
         print(f"Searching eBay: {keyword}" + (f" (min ${min_price})" if min_price else ""))
-    try:
+        try:
             url = f"https://www.ebay.com/rss/search/listings?_nkw={quote(keyword)}&_sop=12&_ipg=100"
             if min_price:
                 url += f"&_udlo={min_price}"
@@ -191,24 +191,17 @@ async def scrape_ebay():
             if feed.bozo:
                 print(f"  Feed error: {feed.bozo_exception}")
             print(f"  -> {len(feed.entries)} items")
-            ...rest of loop...
-        except Exception as e:
-            print(f"  eBay error: {e}")
-            
+
             for entry in feed.entries[:50]:
                 title = entry.get("title", "(no title)")
                 ebay_url = entry.get("link", "")
                 price_str = entry.get("summary", "")
                 image_url = None
-                
-                # Extract price and image from summary HTML
-                import re
                 price_match = re.search(r'\$(\d+(?:\.\d{2})?)', price_str)
                 price = float(price_match.group(1)) if price_match else None
                 img_match = re.search(r'<img[^>]*src=["\']([^"\']+)["\']', price_str)
                 if img_match:
                     image_url = img_match.group(1)
-                
                 item_data = {
                     "item_url": ebay_url,
                     "title": title,
@@ -216,15 +209,11 @@ async def scrape_ebay():
                     "search_term": keyword,
                     "image_url": image_url,
                 }
-                if await dedup_and_store(item_data, keyword):
-                    new_items.append(item_data)
+                new_items.extend(dedupe_and_store([item_data], keyword))
         except Exception as e:
             print(f"  eBay error: {e}")
-        
         await asyncio.sleep(0.5)
-    
     return new_items
-
 
 async def main():
     print(f"Starting monitor at {datetime.now()}")
