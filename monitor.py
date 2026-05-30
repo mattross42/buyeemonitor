@@ -406,6 +406,9 @@ async def main():
     # Discord alerts to separate channels
     if mercari_new:
         send_discord_alert(mercari_new, webhook=DISCORD_WEBHOOK)
+    print(f"  DEBUG ebay_new at send = {len(ebay_new)}")
+    if ebay_new:
+        send_discord_alert(ebay_new, webhook=DISCORD_WEBHOOK)
     if ebay_new:
         send_discord_alert(ebay_new, webhook=DISCORD_WEBHOOK_EBAY)
     
