@@ -11,15 +11,46 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 
 # Plain keywords now (NOT URLs). Japanese or English both work. Edit freely.
+PIN_CATEGORY = 975  # キャラクターグッズ → ピンズ・ピンバッジ・缶バッジ; applied to every search
+
+# Plain keywords. Each is auto-filtered to the pin/badge category above.
+# Cut any lines you don't collect — fewer terms = faster, lighter runs.
 SEARCH_TERMS = [
-    "ディズニー ピン",
-    "ピクサー ピン",
-    "スター・ウォーズ ピン",
-    "ステッチ ピン",
-    "disney pin",
+    # --- Disney umbrella ---
+    "ディズニー", "ディズニーランド", "ディズニーシー", "ディズニーリゾート", "TDR", "ディズニーストア",
+    # --- Mickey & friends ---
+    "ミッキー", "ミニー", "ドナルド", "デイジー", "グーフィー", "プルート", "チップとデール", "チップ&デール",
+    # --- Winnie the Pooh ---
+    "くまのプーさん", "プーさん", "ピグレット", "ティガー", "イーヨー",
+    # --- Princesses & their films ---
+    "白雪姫", "シンデレラ", "オーロラ姫", "眠れる森の美女", "アリエル", "リトルマーメイド",
+    "ベル", "美女と野獣", "ジャスミン", "アラジン", "ラプンツェル", "塔の上のラプンツェル",
+    "モアナ", "ティアナ", "ムーラン", "メリダ",
+    # --- Frozen ---
+    "アナと雪の女王", "エルサ", "オラフ",
+    # --- Classics & other films ---
+    "ふしぎの国のアリス", "アリス", "チェシャ猫", "ピーターパン", "ティンカーベル",
+    "ダンボ", "バンビ", "ピノキオ", "ライオンキング", "シンバ", "ヘラクレス", "ノートルダムの鐘",
+    # --- Villains ---
+    "マレフィセント", "アースラ", "クルエラ",
+    # --- Nightmare Before Christmas ---
+    "ナイトメアビフォアクリスマス", "ナイトメア", "ジャックスケリントン", "ゼロ",
+    # --- Stitch / Lilo & Stitch ---
+    "スティッチ", "リロ&スティッチ", "エンジェル", "スクランプ",
+    # --- Pixar ---
+    "ピクサー", "トイストーリー", "ウッディ", "バズライトイヤー",
+    "リトルグリーンメン", "エイリアン", "モンスターズインク",
+    "ファインディングニモ", "ニモ", "ドリー", "カーズ", "マックィーン",
+    "レミーのおいしいレストラン", "ウォーリー", "カールじいさんの空飛ぶ家",
+    "インサイドヘッド",
+    "私ときどきレッサーパンダ", "ベイマックス", "ズートピア",
+    # --- Star Wars (both spellings) ---
+    "スターウォーズ", "スター・ウォーズ", "STAR WARS", "ダースベイダー", "ヨーダ",
+    "グローグー", "ベビーヨーダ", "マンダロリアン", "R2-D2", "C-3PO", "BB-8",
+    "ストームトルーパー", "チューバッカ", "ボバフェット", "レイ", "カイロレン",
 ]
 
-LIMIT_PER_SEARCH = 20  # newest N per search; it's free now, so tune as you like
+LIMIT_PER_SEARCH = 50  # newest N kept per search; higher = deeper back-catalog on first run
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 m = Mercapi()
@@ -27,8 +58,9 @@ m = Mercapi()
 async def scrape_term(term):
     print(f"Searching: {term}")
     try:
-        results = await m.search(
+       results = await m.search(
             term,
+            categories=[PIN_CATEGORY],
             sort_by=SearchRequestData.SortBy.SORT_CREATED_TIME,
             sort_order=SearchRequestData.SortOrder.ORDER_DESC,
             status=[SearchRequestData.Status.STATUS_ON_SALE],
@@ -38,6 +70,7 @@ async def scrape_term(term):
         return []
     items = results.items[:LIMIT_PER_SEARCH]
     print(f"  -> {len(items)} items (of {results.meta.num_found} total)")
+    await asyncio.sleep(0.7)   # be gentle on Mercari's API
     if items:
         first = items[0]
         print("DEBUG fields:", {
