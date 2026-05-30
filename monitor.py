@@ -106,34 +106,53 @@ def dedupe_and_store(items, term):
     new_items = []
     for it in items:
         try:
-            item_id = getattr(it, "id_", None) or getattr(it, "id", None)
-            if not item_id:
-                continue
-            buyee_url = f"https://buyee.jp/mercari/item/{item_id}"
-            thumbs = getattr(it, "thumbnails", None) or []
-            item_data = {
-                "id": str(item_id),
-                "item_url": buyee_url,
-                "title": getattr(it, "name", None),
-                "price": getattr(it, "price", None),
-                "seller": "Mercari",
-                "condition": "N/A",
-                "search_term": term,
-                "image_url": thumbs[0] if thumbs else None,
-                "last_seen": datetime.now().isoformat(),
-            }
+            if isinstance(it, dict):
+                # Already-built dict (eBay/Flippah)
+                item_url = it.get("item_url")
+                if not item_url:
+                    continue
+                item_data = {
+                    "id": item_url,
+                    "item_url": item_url,
+                    "title": it.get("title"),
+                    "price": it.get("price"),
+                    "seller": it.get("seller", "eBay"),
+                    "condition": it.get("condition", "N/A"),
+                    "search_term": it.get("search_term", term),
+                    "image_url": it.get("image_url"),
+                    "last_seen": datetime.now().isoformat(),
+                }
+            else:
+                # Mercari object
+                item_id = getattr(it, "id_", None) or getattr(it, "id", None)
+                if not item_id:
+                    continue
+                item_url = f"https://buyee.jp/mercari/item/{item_id}"
+                thumbs = getattr(it, "thumbnails", None) or []
+                item_data = {
+                    "id": str(item_id),
+                    "item_url": item_url,
+                    "title": getattr(it, "name", None),
+                    "price": getattr(it, "price", None),
+                    "seller": "Mercari",
+                    "condition": "N/A",
+                    "search_term": term,
+                    "image_url": thumbs[0] if thumbs else None,
+                    "last_seen": datetime.now().isoformat(),
+                }
+
             existing = supabase.table("buyee_items").select("item_url").eq(
-                "item_url", buyee_url
+                "item_url", item_url
             ).execute()
             if existing.data:
                 supabase.table("buyee_items").update({
                     "last_seen": datetime.now().isoformat(),
                     "is_new": False,
-                }).eq("item_url", buyee_url).execute()
+                }).eq("item_url", item_url).execute()
             else:
                 supabase.table("buyee_items").insert(item_data).execute()
                 new_items.append(item_data)
-                print(f"  NEW: {item_data['title']} - ¥{item_data['price']}")
+                print(f"  NEW: {item_data['title']} - {item_data['price']}")
         except Exception as e:
             print(f"  store error: {e}")
             continue
