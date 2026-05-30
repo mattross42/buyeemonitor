@@ -21,6 +21,7 @@ DISCORD_WEBHOOK_EBAY = os.getenv("DISCORD_WEBHOOK_EBAY")
 
 # Plain keywords now (NOT URLs). Japanese or English both work. Edit freely.
 PIN_CATEGORY = 975  # キャラクターグッズ → ピンズ・ピンバッジ・缶バッジ; applied to every search
+EXCLUDE_WORDS = "twisted ツイステッド ツイステ"
 
 # Plain keywords. Each is auto-filtered to the pin/badge category above.
 # Cut any lines you don't collect — fewer terms = faster, lighter runs.
@@ -30,29 +31,28 @@ SEARCH_TERMS = [
     # --- Mickey & friends ---
     "ミッキー",
     # --- Winnie the Pooh ---
-    "くまのプーさん", "プーさん", "ピグレット", "ティガー", "イーヨー",
+    "くまのプーさん", "イーヨー",
     # --- Princesses & their films ---
-    "シンデレラ", "オーロラ", "眠れる森の美女", "アリエル", "リトルマーメイド",
-    "美女と野獣", "アラジン", "ラプンツェル",
+    "眠れる森の美女", "リトルマーメイド",
+    "美女と野獣", "ラプンツェル",
     "モアナ", "ティアナ",
     # --- Classics & other films ---
-    "ふしぎの国のアリス", "ピーターパン",
-    "ライオンキング", "シンバ", "ヘラクレス", "ノートルダムの鐘",
+    "ふしぎの国のアリス",
+    "ライオンキング", "ヘラクレス", "ノートルダムの鐘",
     # --- Villains ---
-    "マレフィセント", "アースラ", "クルエラ",
+    "マレフィセント", "クルエラ",
     # --- Nightmare Before Christmas ---
-    "ナイトメアビフォアクリスマス", "ナイトメア",
+    "ナイトメアビフォアクリスマス",
     # --- Stitch / Lilo & Stitch ---
     "スティッチ", "リロ&スティッチ",
     # --- Pixar ---
     "ピクサー", "トイストーリー",
-    "リトルグリーンメン", "モンスターズインク", "pixar",
-    "ニモ", "ドリー", "カーズ", "マックィーン",
+    "モンスターズインク", "pixar",
     "レミーのおいしいレストラン", "カールじいさんの空飛ぶ家",
     "インサイドヘッド",
     "私ときどきレッサーパンダ", "ベイマックス", "ズートピア",
     # --- Star Wars (both spellings) ---
-    "スターウォーズ", "スター・ウォーズ", "STAR WARS", "ダースベイダー", "ヨーダ",
+    "スターウォーズ", "スター・ウォーズ", "STAR WARS",
     "グローグー", "マンダロリアン",
 ]
 
@@ -81,6 +81,7 @@ async def scrape_term(term):
        results = await m.search(
             term,
             categories=[PIN_CATEGORY],
+            exclude=EXCLUDE_WORDS,
             sort_by=SearchRequestData.SortBy.SORT_CREATED_TIME,
             sort_order=SearchRequestData.SortOrder.ORDER_DESC,
             status=[SearchRequestData.Status.STATUS_ON_SALE],
