@@ -183,7 +183,7 @@ async def scrape_ebay():
     new_items = []
     for keyword, min_price in EBAY_SEARCH_TERMS:
         print(f"Searching eBay: {keyword}" + (f" (min ${min_price})" if min_price else ""))
-      try:
+    try:
             url = f"https://www.ebay.com/rss/search/listings?_nkw={quote(keyword)}&_sop=12&_ipg=100"
             if min_price:
                 url += f"&_udlo={min_price}"
