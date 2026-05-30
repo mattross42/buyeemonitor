@@ -2,6 +2,8 @@ import re
 import os
 import time
 import asyncio
+import imaplib
+import email
 from datetime import datetime
 import requests
 import feedparser
@@ -180,40 +182,80 @@ def send_discord_alert(items, webhook=None):
             requests.post(DISCORD_WEBHOOK, json=payload)
         time.sleep(1)   # stay under Discord's webhook rate limit
 
+GMAIL_USER = os.getenv("GMAIL_USER")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+
+def parse_flippah(raw_bytes):
+    msg = email.message_from_bytes(raw_bytes)
+    html, text = "", ""
+    for part in msg.walk():
+        ct = part.get_content_type()
+        if ct == "text/html":
+            html = part.get_payload(decode=True).decode("utf-8", errors="replace")
+        elif ct == "text/plain":
+            text = part.get_payload(decode=True).decode("utf-8", errors="replace")
+
+    item_ids = []
+    for m in re.findall(r'open-ebay/(\d+)/', html):
+        if m not in item_ids:
+            item_ids.append(m)
+    images = re.findall(r'(https://i\.ebayimg\.com/[^"\']+)', html)
+
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    start = 0
+    for i, l in enumerate(lines):
+        if l.startswith("Note:") and "Clicking" in l:
+            start = i + 1
+            break
+    blocks, buf = [], []
+    for l in lines[start:]:
+        buf.append(l)
+        if l.startswith("Your Search Term:"):
+            blocks.append(buf); buf = []
+
+    items = []
+    for idx, block in enumerate(blocks):
+        price = None
+        for l in block:
+            pm = re.search(r'\$(\d+(?:\.\d{2})?)', l)
+            if pm:
+                price = float(pm.group(1)); break
+        term = ""
+        for l in block:
+            if l.startswith("Your Search Term:"):
+                term = l.split(":", 1)[1].strip(); break
+        item_id = item_ids[idx] if idx < len(item_ids) else None
+        items.append({
+            "title": block[0],
+            "price": price,
+            "search_term": term,
+            "item_url": f"https://www.ebay.com/itm/{item_id}" if item_id else "",
+            "image_url": images[idx] if idx < len(images) else None,
+        })
+    return items
+
 async def scrape_ebay():
     new_items = []
-    for keyword, min_price in EBAY_SEARCH_TERMS:
-        print(f"Searching eBay: {keyword}" + (f" (min ${min_price})" if min_price else ""))
-        try:
-            url = f"https://www.ebay.com/rss/search/listings?_nkw={quote(keyword)}&_sop=12&_ipg=100"
-            if min_price:
-                url += f"&_udlo={min_price}"
-            feed = feedparser.parse(url)
-            if feed.bozo:
-                print(f"  Feed error: {feed.bozo_exception}")
-            print(f"  -> {len(feed.entries)} items")
-
-            for entry in feed.entries[:50]:
-                title = entry.get("title", "(no title)")
-                ebay_url = entry.get("link", "")
-                price_str = entry.get("summary", "")
-                image_url = None
-                price_match = re.search(r'\$(\d+(?:\.\d{2})?)', price_str)
-                price = float(price_match.group(1)) if price_match else None
-                img_match = re.search(r'<img[^>]*src=["\']([^"\']+)["\']', price_str)
-                if img_match:
-                    image_url = img_match.group(1)
-                item_data = {
-                    "item_url": ebay_url,
-                    "title": title,
-                    "price": price,
-                    "search_term": keyword,
-                    "image_url": image_url,
-                }
-                new_items.extend(dedupe_and_store([item_data], keyword))
-        except Exception as e:
-            print(f"  eBay error: {e}")
-        await asyncio.sleep(0.5)
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        print("Gmail creds missing, skipping Flippah")
+        return new_items
+    try:
+        imap = imaplib.IMAP4_SSL("imap.gmail.com")
+        imap.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        imap.select("INBOX")
+        typ, data = imap.search(None, 'X-GM-RAW', '"from:flippah.net newer_than:1d"')
+        ids = data[0].split()
+        print(f"Flippah emails found: {len(ids)}")
+        for eid in ids:
+            typ, msg_data = imap.fetch(eid, "(RFC822)")
+            raw = msg_data[0][1]
+            for item in parse_flippah(raw):
+                if item["item_url"]:
+                    new_items.extend(dedupe_and_store([item], item["search_term"]))
+        imap.logout()
+    except Exception as e:
+        print(f"  Flippah/Gmail error: {e}")
+    print(f"  -> {len(new_items)} new eBay items")
     return new_items
 
 async def main():
