@@ -147,7 +147,9 @@ def translate_title(text):
         print(f"  translate error: {e}")
         return text  # fall back to the original on any hiccup
         
-def send_discord_alert(items):
+def send_discord_alert(items, webhook=None):
+    if not webhook:
+        webhook = DISCORD_WEBHOOK
     if not items or not DISCORD_WEBHOOK:
         return
     # Discord allows max 10 embeds per message, so send in chunks of 10.
@@ -171,7 +173,7 @@ def send_discord_alert(items):
         payload = {"embeds": embeds}
         if i == 0:
             payload["content"] = f"🔔 {len(items)} new item(s)!"
-        resp = requests.post(DISCORD_WEBHOOK, json=payload)
+        resp = requests.post(webhook, json=payload)
         if resp.status_code == 429:   # rate limited — wait and retry once
             time.sleep(2)
             requests.post(DISCORD_WEBHOOK, json=payload)
