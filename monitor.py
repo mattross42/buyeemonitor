@@ -286,9 +286,8 @@ async def main():
         items = await scrape_term(term)
         mercari_new.extend(dedupe_and_store(items, term))
     
-    # eBay
-    ebay_items = await scrape_ebay()
-    ebay_new.extend(dedupe_and_store(ebay_items, "eBay"))
+# eBay (scrape_ebay already stores + dedupes internally)
+    ebay_new = await scrape_ebay()
     
     # Discord alerts to separate channels
     if mercari_new:
