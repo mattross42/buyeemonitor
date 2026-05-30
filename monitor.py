@@ -1,7 +1,9 @@
 import os
+import time
 import asyncio
 from datetime import datetime
 import requests
+from deep_translator import GoogleTranslator
 from supabase import create_client, Client
 from mercapi import Mercapi
 from mercapi.requests import SearchRequestData
@@ -119,24 +121,44 @@ def dedupe_and_store(items, term):
             continue
     return new_items
 
+def translate_title(text):
+    if not text:
+        return text
+    try:
+        return GoogleTranslator(source="ja", target="en").translate(text)
+    except Exception as e:
+        print(f"  translate error: {e}")
+        return text  # fall back to the original on any hiccup
+        
 def send_discord_alert(items):
     if not items or not DISCORD_WEBHOOK:
         return
-    embeds = []
-    for it in items[:10]:   # Discord allows up to 10 embeds per message
-        embed = {
-            "title": (it["title"] or "(no title)")[:250],
-            "url": it["item_url"],
-            "description": f"¥{it['price']}  •  {it['search_term']}",
-        }
-        if it.get("image_url"):
-            embed["thumbnail"] = {"url": it["image_url"]}
-        embeds.append(embed)
-    payload = {
-        "content": f"🔔 {len(items)} new item(s)!",
-        "embeds": embeds,
-    }
-    requests.post(DISCORD_WEBHOOK, json=payload)
+    # Discord allows max 10 embeds per message, so send in chunks of 10.
+    for i in range(0, len(items), 10):
+        chunk = items[i:i + 10]
+        embeds = []
+        for it in chunk:
+            original = it["title"] or "(no title)"
+            english = translate_title(original)
+            desc = f"¥{it['price']}  •  {it['search_term']}"
+            if english and english != original:
+                desc += f"\n🇯🇵 {original[:200]}"   # keep the JP title too
+            embed = {
+                "title": (english or original)[:250],
+                "url": it["item_url"],
+                "description": desc,
+            }
+            if it.get("image_url"):
+                embed["thumbnail"] = {"url": it["image_url"]}
+            embeds.append(embed)
+        payload = {"embeds": embeds}
+        if i == 0:
+            payload["content"] = f"🔔 {len(items)} new item(s)!"
+        resp = requests.post(DISCORD_WEBHOOK, json=payload)
+        if resp.status_code == 429:   # rate limited — wait and retry once
+            time.sleep(2)
+            requests.post(DISCORD_WEBHOOK, json=payload)
+        time.sleep(1)   # stay under Discord's webhook rate limit
 
 async def main():
     print(f"Starting Mercari monitor at {datetime.now()}")
