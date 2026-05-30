@@ -3,6 +3,8 @@ import time
 import asyncio
 from datetime import datetime
 import requests
+import feedparser
+import xml.etree.ElementTree as ET
 from deep_translator import GoogleTranslator
 from supabase import create_client, Client
 from mercapi import Mercapi
@@ -11,6 +13,7 @@ from mercapi.requests import SearchRequestData
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
+DISCORD_WEBHOOK_EBAY = os.getenv("DISCORD_WEBHOOK_EBAY")
 
 # Plain keywords now (NOT URLs). Japanese or English both work. Edit freely.
 PIN_CATEGORY = 975  # キャラクターグッズ → ピンズ・ピンバッジ・缶バッジ; applied to every search
@@ -50,6 +53,20 @@ SEARCH_TERMS = [
     "スターウォーズ", "スター・ウォーズ", "STAR WARS", "ダースベイダー", "ヨーダ",
     "グローグー", "ベビーヨーダ", "マンダロリアン", "R2-D2", "C-3PO", "BB-8",
     "ストームトルーパー", "チューバッカ", "ボバフェット", "レイ", "カイロレン",
+]
+
+EBAY_SEARCH_TERMS = [
+    ("999 happy haunts pin", None),
+    ("Disney pin frame", 100),
+    ("Disney pin gomes", None),
+    ("Disney pin rare", 499),
+    ("Disney profile pin wdi", None),
+    ("Micmo523584", None),
+    ("Stilladddear", None),
+    ('Stitch "Disney auctions" pin', None),
+    ('Stitch "Disney shopping" pin', None),
+    ("Sunny_days_ahead_shop", None),
+    ('"global security" Disney pin', None),
 ]
 
 LIMIT_PER_SEARCH = 50  # newest N kept per search; higher = deeper back-catalog on first run
@@ -160,15 +177,69 @@ def send_discord_alert(items):
             requests.post(DISCORD_WEBHOOK, json=payload)
         time.sleep(1)   # stay under Discord's webhook rate limit
 
+async def scrape_ebay():
+    new_items = []
+    for keyword, min_price in EBAY_SEARCH_TERMS:
+        print(f"Searching eBay: {keyword}" + (f" (min ${min_price})" if min_price else ""))
+        try:
+            url = f"https://www.ebay.com/rss/search/listings?_nkw={keyword}&_sop=12&_ipg=100"
+            if min_price:
+                url += f"&_udlo={min_price}"
+            feed = feedparser.parse(url)
+            print(f"  -> {len(feed.entries)} items")
+            
+            for entry in feed.entries[:50]:
+                title = entry.get("title", "(no title)")
+                ebay_url = entry.get("link", "")
+                price_str = entry.get("summary", "")
+                image_url = None
+                
+                # Extract price and image from summary HTML
+                import re
+                price_match = re.search(r'\$(\d+(?:\.\d{2})?)', price_str)
+                price = float(price_match.group(1)) if price_match else None
+                img_match = re.search(r'<img[^>]*src=["\']([^"\']+)["\']', price_str)
+                if img_match:
+                    image_url = img_match.group(1)
+                
+                item_data = {
+                    "item_url": ebay_url,
+                    "title": title,
+                    "price": price,
+                    "search_term": keyword,
+                    "image_url": image_url,
+                }
+                if await dedup_and_store(item_data, keyword):
+                    new_items.append(item_data)
+        except Exception as e:
+            print(f"  eBay error: {e}")
+        
+        await asyncio.sleep(0.5)
+    
+    return new_items
+
+
 async def main():
-    print(f"Starting Mercari monitor at {datetime.now()}")
-    all_new = []
+    print(f"Starting monitor at {datetime.now()}")
+    mercari_new = []
+    ebay_new = []
+    
+    # Mercari
     for term in SEARCH_TERMS:
         items = await scrape_term(term)
-        all_new.extend(dedupe_and_store(items, term))
-    if all_new:
-        send_discord_alert(all_new)
-    print(f"Done. {len(all_new)} new items.")
+        mercari_new.extend(dedupe_and_store(items, term))
+    
+    # eBay
+    ebay_items = await scrape_ebay()
+    ebay_new.extend(dedupe_and_store(ebay_items, "eBay"))
+    
+    # Discord alerts to separate channels
+    if mercari_new:
+        send_discord_alert(mercari_new, webhook=DISCORD_WEBHOOK)
+    if ebay_new:
+        send_discord_alert(ebay_new, webhook=DISCORD_WEBHOOK_EBAY)
+    
+    print(f"Done. {len(mercari_new)} Mercari, {len(ebay_new)} eBay new items.")
 
 if __name__ == "__main__":
     asyncio.run(main())
