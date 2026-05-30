@@ -295,26 +295,32 @@ def parse_flippah(raw_bytes):
 
 def parse_yahoo(html, term):
     items = []
-    # Pull all listing images in document order
-    images = re.findall(r'(https://[a-z-]+\.c\.yimg\.jp/[^\s"\'<>]+\.jpg[^\s"\'<>]*)', html)
-    pattern = re.compile(
-        r'/jp/auction/([a-z]?\d+)"[^>]*title="([^"]+)"', re.IGNORECASE
-    )
+    # Split into per-listing blocks: each real listing anchors on /jp/auction/{id}
+    # Use the listing link as the block boundary.
+    blocks = re.split(r'(?=/jp/auction/[a-z]?\d+")', html)
     seen = set()
-    idx = 0
-    for m in pattern.finditer(html):
-        item_id, title = m.group(1), m.group(2)
+    for block in blocks:
+        m_id = re.search(r'/jp/auction/([a-z]?\d+)"', block)
+        if not m_id:
+            continue
+        item_id = m_id.group(1)
         if item_id in seen:
             continue
+
+        m_title = re.search(r'title="([^"]+)"', block)
+        if not m_title:
+            continue  # skip non-listing fragments
+
+        # image must live inside THIS block, so it can't drift out of sync
+        m_img = re.search(r'(https://[a-z-]+\.c\.yimg\.jp/[^\s"\'<>]+\.jpg[^\s"\'<>]*)', block)
+
         seen.add(item_id)
-        img = images[idx] if idx < len(images) else None
-        idx += 1
         items.append({
             "item_url": f"https://buyee.jp/item/yahoo/auction/{item_id}",
-            "title": title.strip(),
+            "title": m_title.group(1).strip(),
             "price": None,
             "search_term": term,
-            "image_url": img,
+            "image_url": m_img.group(1) if m_img else None,
             "seller": "YahooAuctions",
         })
     return items
