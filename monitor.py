@@ -21,7 +21,7 @@ DISCORD_WEBHOOK_EBAY = os.getenv("DISCORD_WEBHOOK_EBAY")
 
 # Plain keywords now (NOT URLs). Japanese or English both work. Edit freely.
 PIN_CATEGORY = 975  # キャラクターグッズ → ピンズ・ピンバッジ・缶バッジ; applied to every search
-EXCLUDE_WORDS = "twisted ツイステッド ツイステ"
+EXCLUDE_WORDS = "twisted ツイステッド ツイステ 缶バッジ"
 
 # Plain keywords. Each is auto-filtered to the pin/badge category above.
 # Cut any lines you don't collect — fewer terms = faster, lighter runs.
