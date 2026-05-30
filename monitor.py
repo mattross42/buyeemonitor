@@ -325,9 +325,10 @@ async def scrape_yahoo():
     for term in YAHOO_SEARCH_TERMS:
         print(f"Searching Yahoo: {term}")
         try:
-            url = (
+          url = (
                 "https://auctions.yahoo.co.jp/search/search"
-                f"?p={quote(term + ' ピンバッジ')}&va={quote(term)}"
+                f"?p={quote(term)}&va={quote(term)}"
+                "&auccat=44364"
                 "&s1=new&o1=d&n=50"
             )
             resp = requests.get(url, headers=headers, timeout=20)
