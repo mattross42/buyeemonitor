@@ -9,6 +9,7 @@ from deep_translator import GoogleTranslator
 from supabase import create_client, Client
 from mercapi import Mercapi
 from mercapi.requests import SearchRequestData
+from urllib.parse import quote
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -184,9 +185,10 @@ async def scrape_ebay():
     for keyword, min_price in EBAY_SEARCH_TERMS:
         print(f"Searching eBay: {keyword}" + (f" (min ${min_price})" if min_price else ""))
         try:
-            url = f"https://www.ebay.com/rss/search/listings?_nkw={keyword}&_sop=12&_ipg=100"
+            from urllib.parse import quote
+            url = f"https://www.ebay.com/rss/search/listings?_nkw={quote(keyword)}&_sop=12&_ipg=100"
             if min_price:
-                url += f"&_udlo={min_price}"
+            url += f"&_udlo={min_price}"
             feed = feedparser.parse(url)
             print(f"  -> {len(feed.entries)} items")
             
