@@ -368,7 +368,6 @@ async def scrape_ebay():
         ids = data[0].split()
         print(f"Flippah emails found: {len(ids)}")
         all_items = []
-        all_items = []
         for eid in ids:
             typ, msg_data = imap.fetch(eid, "(RFC822)")
             raw = msg_data[0][1]
@@ -376,10 +375,9 @@ async def scrape_ebay():
                 if item["item_url"]:
                     all_items.append(item)
         imap.logout()
-        print(f"  DEBUG parsed {len(all_items)} items; sample: {all_items[:2]}")
+        print(f"  DEBUG parsed {len(all_items)} items")
         new_items = dedupe_and_store(all_items, "eBay")
         print(f"  DEBUG dedupe returned {len(new_items)} new")
-        new_items = dedupe_and_store(all_items, "eBay")
     except Exception as e:
         print(f"  Flippah/Gmail error: {e}")
     print(f"  -> {len(new_items)} new eBay items")
