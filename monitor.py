@@ -27,7 +27,7 @@ EXCLUDE_WORDS = "twisted ツイステッド ツイステ 缶バッジ"
 # Cut any lines you don't collect — fewer terms = faster, lighter runs.
 SEARCH_TERMS = [
     # --- Disney umbrella ---
-    "ディズニー", "ディズニーランド", "disney",
+    "ディズニー",
     # --- Mickey & friends ---
     "ミッキー",
     # --- Winnie the Pooh ---
@@ -35,7 +35,7 @@ SEARCH_TERMS = [
     # --- Princesses & their films ---
     "眠れる森の美女", "リトルマーメイド",
     "美女と野獣", "ラプンツェル",
-    "モアナ", "ティアナ",
+    "モアナ",
     # --- Classics & other films ---
     "ふしぎの国のアリス",
     "ライオンキング", "ヘラクレス", "ノートルダムの鐘",
@@ -104,11 +104,10 @@ async def scrape_term(term):
     return items
 
 def dedupe_and_store(items, term):
-    new_items = []
+    built = []
     for it in items:
         try:
             if isinstance(it, dict):
-                # Already-built dict (eBay/Flippah)
                 item_url = it.get("item_url")
                 if not item_url:
                     continue
@@ -124,7 +123,6 @@ def dedupe_and_store(items, term):
                     "last_seen": datetime.now().isoformat(),
                 }
             else:
-                # Mercari object
                 item_id = getattr(it, "id_", None) or getattr(it, "id", None)
                 if not item_id:
                     continue
@@ -141,22 +139,53 @@ def dedupe_and_store(items, term):
                     "image_url": thumbs[0] if thumbs else None,
                     "last_seen": datetime.now().isoformat(),
                 }
-
-            existing = supabase.table("buyee_items").select("item_url").eq(
-                "item_url", item_url
-            ).execute()
-            if existing.data:
-                supabase.table("buyee_items").update({
-                    "last_seen": datetime.now().isoformat(),
-                    "is_new": False,
-                }).eq("item_url", item_url).execute()
-            else:
-                supabase.table("buyee_items").insert(item_data).execute()
-                new_items.append(item_data)
-                print(f"  NEW: {item_data['title']} - {item_data['price']}")
+            built.append(item_data)
         except Exception as e:
-            print(f"  store error: {e}")
+            print(f"  build error: {e}")
             continue
+
+    if not built:
+        return []
+
+    urls = [d["item_url"] for d in built]
+    existing = set()
+    for i in range(0, len(urls), 100):
+        chunk = urls[i:i + 100]
+        try:
+            resp = supabase.table("buyee_items").select("item_url").in_("item_url", chunk).execute()
+            for row in resp.data:
+                existing.add(row["item_url"])
+        except Exception as e:
+            print(f"  select error: {e}")
+
+    now = datetime.now().isoformat()
+    to_insert, seen = [], set()
+    for d in built:
+        u = d["item_url"]
+        if u in existing or u in seen:
+            continue
+        seen.add(u)
+        to_insert.append(d)
+
+    new_items = []
+    for i in range(0, len(to_insert), 100):
+        batch = to_insert[i:i + 100]
+        try:
+            supabase.table("buyee_items").insert(batch).execute()
+            new_items.extend(batch)
+            for d in batch:
+                print(f"  NEW: {d['title']} - {d['price']}")
+        except Exception as e:
+            print(f"  insert error: {e}")
+
+    if existing:
+        ex = list(existing)
+        for i in range(0, len(ex), 100):
+            try:
+                supabase.table("buyee_items").update({"last_seen": now, "is_new": False}).in_("item_url", ex[i:i + 100]).execute()
+            except Exception as e:
+                print(f"  update error: {e}")
+
     return new_items
 
 def translate_title(text):
@@ -264,13 +293,17 @@ async def scrape_ebay():
         typ, data = imap.search(None, 'X-GM-RAW', '"from:flippah.net newer_than:1d"')
         ids = data[0].split()
         print(f"Flippah emails found: {len(ids)}")
+        all_items = []
+        all_items = []
         for eid in ids:
             typ, msg_data = imap.fetch(eid, "(RFC822)")
             raw = msg_data[0][1]
             for item in parse_flippah(raw):
                 if item["item_url"]:
-                    new_items.extend(dedupe_and_store([item], item["search_term"]))
+                    all_items.append(item)
         imap.logout()
+        new_items = dedupe_and_store(all_items, "eBay")
+        new_items = dedupe_and_store(all_items, "eBay")
     except Exception as e:
         print(f"  Flippah/Gmail error: {e}")
     print(f"  -> {len(new_items)} new eBay items")
