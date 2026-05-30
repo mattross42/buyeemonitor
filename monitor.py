@@ -70,6 +70,18 @@ EBAY_SEARCH_TERMS = [
     ('"global security" Disney pin', None),
 ]
 
+YAHOO_SEARCH_TERMS = [
+    "ディズニー", "ミッキー", "くまのプーさん", "イーヨー",
+    "眠れる森の美女", "リトルマーメイド", "美女と野獣", "ラプンツェル", "モアナ",
+    "ふしぎの国のアリス", "ライオンキング", "ヘラクレス", "ノートルダムの鐘",
+    "マレフィセント", "クルエラ", "ナイトメアビフォアクリスマス",
+    "スティッチ", "リロ&スティッチ", "ピクサー", "トイストーリー",
+    "モンスターズインク", "pixar", "レミーのおいしいレストラン",
+    "カールじいさんの空飛ぶ家", "インサイドヘッド", "私ときどきレッサーパンダ",
+    "ベイマックス", "ズートピア", "スターウォーズ", "スター・ウォーズ",
+    "STAR WARS", "グローグー", "マンダロリアン",
+]
+
 LIMIT_PER_SEARCH = 50  # newest N kept per search; higher = deeper back-catalog on first run
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -281,6 +293,48 @@ def parse_flippah(raw_bytes):
         })
     return items
 
+def parse_yahoo(html, term):
+    items = []
+    # Each listing links to /jp/auction/{id}; capture id + title
+    pattern = re.compile(
+        r'/jp/auction/([a-z]?\d+)"[^>]*title="([^"]+)"', re.IGNORECASE
+    )
+    seen = set()
+    for m in pattern.finditer(html):
+        item_id, title = m.group(1), m.group(2)
+        if item_id in seen:
+            continue
+        seen.add(item_id)
+        items.append({
+            "item_url": f"https://buyee.jp/item/yahoo/auction/{item_id}",
+            "title": title.strip(),
+            "price": None,          # price parsing below is approximate; left blank if unsure
+            "search_term": term,
+            "image_url": None,
+            "seller": "YahooAuctions",
+        })
+    return items
+
+async def scrape_yahoo():
+    new_items = []
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    for term in YAHOO_SEARCH_TERMS:
+        print(f"Searching Yahoo: {term}")
+        try:
+            url = (
+                "https://auctions.yahoo.co.jp/search/search"
+                f"?p={quote(term + ' ピンバッジ')}&va={quote(term)}"
+                "&s1=new&o1=d&n=50"
+            )
+            resp = requests.get(url, headers=headers, timeout=20)
+            parsed = parse_yahoo(resp.text, term)
+            print(f"  -> {len(parsed)} items")
+            new_items.extend(dedupe_and_store(parsed, term))
+        except Exception as e:
+            print(f"  Yahoo error: {e}")
+        await asyncio.sleep(0.7)
+    return new_items
+    
 async def scrape_ebay():
     new_items = []
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
@@ -318,8 +372,13 @@ async def main():
     for term in SEARCH_TERMS:
         items = await scrape_term(term)
         mercari_new.extend(dedupe_and_store(items, term))
-    
-# eBay (scrape_ebay already stores + dedupes internally)
+
+    yahoo_new = await scrape_yahoo()
+    ...
+    if yahoo_new:
+        send_discord_alert(yahoo_new, webhook=DISCORD_WEBHOOK)
+        
+    # eBay (scrape_ebay already stores + dedupes internally)
     ebay_new = await scrape_ebay()
     
     # Discord alerts to separate channels
