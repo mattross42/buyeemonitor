@@ -169,6 +169,7 @@ def dedupe_and_store(items, term):
                 existing.add(row["item_url"])
         except Exception as e:
             print(f"  select error: {e}")
+    print(f"  DEBUG built={len(built)} existing={len(existing)}")
 
     now = datetime.now().isoformat()
     to_insert, seen = [], set()
@@ -189,6 +190,7 @@ def dedupe_and_store(items, term):
                 print(f"  NEW: {d['title']} - {d['price']}")
         except Exception as e:
             print(f"  insert error: {e}")
+    print(f"  DEBUG to_insert={len(to_insert)} inserted={len(new_items)}")
 
     if existing:
         ex = list(existing)
