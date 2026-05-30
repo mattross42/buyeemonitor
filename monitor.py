@@ -122,10 +122,21 @@ def dedupe_and_store(items, term):
 def send_discord_alert(items):
     if not items or not DISCORD_WEBHOOK:
         return
-    msg = f"🔔 {len(items)} new item(s)!\n\n"
-    for it in items[:5]:
-        msg += f"**{it['title']}**\n¥{it['price']} | {it['search_term']}\n{it['item_url']}\n\n"
-    requests.post(DISCORD_WEBHOOK, json={"content": msg})
+    embeds = []
+    for it in items[:10]:   # Discord allows up to 10 embeds per message
+        embed = {
+            "title": (it["title"] or "(no title)")[:250],
+            "url": it["item_url"],
+            "description": f"¥{it['price']}  •  {it['search_term']}",
+        }
+        if it.get("image_url"):
+            embed["thumbnail"] = {"url": it["image_url"]}
+        embeds.append(embed)
+    payload = {
+        "content": f"🔔 {len(items)} new item(s)!",
+        "embeds": embeds,
+    }
+    requests.post(DISCORD_WEBHOOK, json=payload)
 
 async def main():
     print(f"Starting Mercari monitor at {datetime.now()}")
