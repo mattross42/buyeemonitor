@@ -56,6 +56,13 @@ SEARCH_TERMS = [
     "グローグー", "マンダロリアン",
 ]
 
+MERCARI_GENERAL_TERMS = [
+    "ディズニー ピン",
+    "ミッキー ピン",
+    "ピクサー ピン",
+    "スターウォーズ ピン",
+]
+
 EBAY_SEARCH_TERMS = [
     ("999 happy haunts pin", None),
     ("Disney pin frame", 100),
@@ -355,6 +362,24 @@ async def scrape_yahoo():
         await asyncio.sleep(0.7)
     return new_items
     
+async def scrape_term_general(term):
+    print(f"Searching (general): {term}")
+    try:
+        results = await m.search(
+            term,
+            exclude=EXCLUDE_WORDS,
+            sort_by=SearchRequestData.SortBy.SORT_CREATED_TIME,
+            sort_order=SearchRequestData.SortOrder.ORDER_DESC,
+            status=[SearchRequestData.Status.STATUS_ON_SALE],
+        )
+    except Exception as e:
+        print(f"  search error: {e}")
+        return []
+    items = results.items[:LIMIT_PER_SEARCH]
+    print(f"  -> {len(items)} items (of {results.meta.num_found} total)")
+    await asyncio.sleep(0.7)
+    return items    
+    
 async def scrape_ebay():
     new_items = []
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
@@ -393,6 +418,11 @@ async def main():
         items = await scrape_term(term)
         mercari_new.extend(dedupe_and_store(items, term))
 
+    # Mercari general (no category filter)
+    for term in MERCARI_GENERAL_TERMS:
+        items = await scrape_term_general(term)
+        mercari_new.extend(dedupe_and_store(items, term))
+        
     yahoo_new = await scrape_yahoo()
     ...
     if yahoo_new:
