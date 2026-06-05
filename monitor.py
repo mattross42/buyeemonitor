@@ -89,6 +89,16 @@ YAHOO_SEARCH_TERMS = [
     "STAR WARS", "グローグー", "マンダロリアン",
 ]
 
+JD_FLEA_TERMS = [
+    "ディズニー ピン",
+    "ミッキー ピン",
+    "Disney Pin",
+    "Star Wars Pin",
+    "Pixar Pin",
+    "ピクサー ピン",
+    "スターウォーズ ピン",
+]
+
 LIMIT_PER_SEARCH = 50  # newest N kept per search; higher = deeper back-catalog on first run
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -341,6 +351,49 @@ def parse_yahoo(html, term):
         })
     return items
 
+def parse_jdflea(html, term):
+    items = []
+    blocks = re.split(r'(?=/paypayfleamarket/item/[a-z]?\d+)', html)
+    seen = set()
+    for block in blocks:
+        m_id = re.search(r'/paypayfleamarket/item/([a-z]?\d+)', block)
+        if not m_id:
+            continue
+        item_id = m_id.group(1)
+        if item_id in seen:
+            continue
+        m_price = re.search(r'([\d,]+)\s*YEN', block)
+        m_img = re.search(r'(https://[^\s"\'<>]+\.(?:jpg|jpeg|png)[^\s"\'<>]*)', block)
+        # title: the link text is the item name, doubled; take the first half cleanly
+        m_title = re.search(r'\[([^\]]+)\]\(https://buyee\.jp/paypayfleamarket/item/', block)
+        title = m_title.group(1).strip() if m_title else "(no title)"
+        seen.add(item_id)
+        items.append({
+            "item_url": f"https://buyee.jp/paypayfleamarket/item/{item_id}",
+            "title": title,
+            "price": float(m_price.group(1).replace(",", "")) if m_price else None,
+            "search_term": term,
+            "image_url": m_img.group(1) if m_img else None,
+            "seller": "JDFlea",
+        })
+    return items
+
+async def scrape_jdflea():
+    new_items = []
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    for term in JD_FLEA_TERMS:
+        print(f"Searching JD Flea: {term}")
+        try:
+            url = f"https://buyee.jp/paypayfleamarket/search?keyword={quote(term)}&page=1&lang=en"
+            resp = requests.get(url, headers=headers, timeout=20)
+            parsed = parse_jdflea(resp.text, term)
+            print(f"  -> {len(parsed)} items")
+            new_items.extend(dedupe_and_store(parsed, term))
+        except Exception as e:
+            print(f"  JD Flea error: {e}")
+        await asyncio.sleep(0.7)
+    return new_items
+    
 async def scrape_yahoo():
     new_items = []
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -428,6 +481,10 @@ async def main():
     if yahoo_new:
         send_discord_alert(yahoo_new, webhook=DISCORD_WEBHOOK)
         
+    # JD Flea Market (Yahoo/PayPay Flea via Buyee)
+    jdflea_new = await scrape_jdflea()
+    mercari_new.extend(jdflea_new)
+    
     # eBay (scrape_ebay already stores + dedupes internally)
     ebay_new = await scrape_ebay()
     
