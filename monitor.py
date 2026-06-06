@@ -249,7 +249,7 @@ def send_discord_alert(items, webhook=None):
                 "description": desc,
             }
             if it.get("image_url"):
-                embed["thumbnail"] = {"url": it["image_url"]}
+                embed["image"] = {"url": it["image_url"]}
             embeds.append(embed)
         payload = {"embeds": embeds}
         if i == 0:
