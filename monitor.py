@@ -4,7 +4,7 @@ import time
 import asyncio
 import imaplib
 import email
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import feedparser
 import xml.etree.ElementTree as ET
@@ -150,6 +150,7 @@ def dedupe_and_store(items, term):
                     "search_term": it.get("search_term", term),
                     "image_url": it.get("image_url"),
                     "last_seen": datetime.now().isoformat(),
+                    "is_new": True,   # alert-pending flag; cleared only after Discord accepts the alert
                 }
             else:
                 item_id = getattr(it, "id_", None) or getattr(it, "id", None)
@@ -167,6 +168,7 @@ def dedupe_and_store(items, term):
                     "search_term": term,
                     "image_url": thumbs[0] if thumbs else None,
                     "last_seen": datetime.now().isoformat(),
+                    "is_new": True,   # alert-pending flag; cleared only after Discord accepts the alert
                 }
             built.append(item_data)
         except Exception as e:
@@ -210,10 +212,14 @@ def dedupe_and_store(items, term):
     print(f"  DEBUG to_insert={len(to_insert)} inserted={len(new_items)}")
 
     if existing:
+        # NOTE: do NOT touch is_new here. Clearing it for "existing" rows was wiping
+        # the alert-pending flag of items a previous (crashed) run stored but never
+        # alerted — they became permanently invisible. is_new is now cleared only
+        # after Discord actually accepts the alert (see send_discord_alert).
         ex = list(existing)
         for i in range(0, len(ex), 100):
             try:
-                supabase.table("buyee_items").update({"last_seen": now, "is_new": False}).in_("item_url", ex[i:i + 100]).execute()
+                supabase.table("buyee_items").update({"last_seen": now}).in_("item_url", ex[i:i + 100]).execute()
             except Exception as e:
                 print(f"  update error: {e}")
 
@@ -229,11 +235,15 @@ def translate_title(text):
         return text  # fall back to the original on any hiccup
         
 def send_discord_alert(items, webhook=None):
+    """Send alerts in chunks of 10 embeds. After Discord ACCEPTS a chunk (2xx),
+    clear is_new for those rows so they are never re-alerted. Chunks that fail
+    keep is_new=True and are retried by the sweep on the next run.
+    Returns the number of items successfully alerted."""
     if not webhook:
         webhook = DISCORD_WEBHOOK
-    if not items or not DISCORD_WEBHOOK:
-        return
-    # Discord allows max 10 embeds per message, so send in chunks of 10.
+    if not items or not webhook:
+        return 0
+    sent = 0
     for i in range(0, len(items), 10):
         chunk = items[i:i + 10]
         embeds = []
@@ -254,11 +264,48 @@ def send_discord_alert(items, webhook=None):
         payload = {"embeds": embeds}
         if i == 0:
             payload["content"] = f"🔔 {len(items)} new item(s)!"
-        resp = requests.post(webhook, json=payload)
-        if resp.status_code == 429:   # rate limited — wait and retry once
-            time.sleep(2)
-            requests.post(DISCORD_WEBHOOK, json=payload)
+        ok = False
+        try:
+            resp = requests.post(webhook, json=payload, timeout=15)
+            if resp.status_code == 429:   # rate limited — wait and retry once
+                time.sleep(2)
+                resp = requests.post(webhook, json=payload, timeout=15)
+            ok = 200 <= resp.status_code < 300
+            if not ok:
+                print(f"  discord post failed: {resp.status_code} {resp.text[:200]}")
+        except Exception as e:
+            print(f"  discord post error: {e}")
+        if ok:
+            sent += len(chunk)
+            try:
+                supabase.table("buyee_items").update({"is_new": False}).in_(
+                    "item_url", [c["item_url"] for c in chunk]).execute()
+            except Exception as e:
+                # Worst case: the same items alert once more next run. Better than losing them.
+                print(f"  is_new clear error: {e}")
         time.sleep(1)   # stay under Discord's webhook rate limit
+    return sent
+
+def sweep_and_alert():
+    """Alert everything still flagged is_new=True (stored by this run OR left
+    behind by a crashed/hung earlier run). Restricted to rows first seen in the
+    last 2 days so stale backlog from before this fix is never dumped."""
+    cutoff = (datetime.now() - timedelta(days=2)).isoformat()
+    try:
+        resp = (supabase.table("buyee_items")
+                .select("item_url,title,price,search_term,image_url,seller")
+                .eq("is_new", True).gte("last_seen", cutoff)
+                .order("last_seen", desc=True).limit(100).execute())
+        pending = resp.data or []
+    except Exception as e:
+        print(f"  sweep select error: {e}")
+        return 0
+    ebay = [r for r in pending if r.get("seller") == "eBay"]
+    other = [r for r in pending if r.get("seller") != "eBay"]
+    print(f"  DEBUG sweep pending={len(pending)} (ebay={len(ebay)})")
+    sent = send_discord_alert(other, webhook=DISCORD_WEBHOOK)
+    sent += send_discord_alert(ebay, webhook=DISCORD_WEBHOOK_EBAY)
+    return sent
 
 GMAIL_USER = os.getenv("GMAIL_USER")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
@@ -439,7 +486,7 @@ async def scrape_ebay():
         print("Gmail creds missing, skipping Flippah")
         return new_items
     try:
-        imap = imaplib.IMAP4_SSL("imap.gmail.com")
+        imap = imaplib.IMAP4_SSL("imap.gmail.com", timeout=30)
         imap.login(GMAIL_USER, GMAIL_APP_PASSWORD)
         imap.select("INBOX")
         typ, data = imap.search(None, 'X-GM-RAW', '"from:flippah.net newer_than:1d"')
@@ -477,25 +524,22 @@ async def main():
         mercari_new.extend(dedupe_and_store(items, term))
         
     yahoo_new = await scrape_yahoo()
-    ...
-    if yahoo_new:
-        send_discord_alert(yahoo_new, webhook=DISCORD_WEBHOOK)
-        
+
     # JD Flea Market (Yahoo/PayPay Flea via Buyee)
     jdflea_new = await scrape_jdflea()
-    mercari_new.extend(jdflea_new)
-    
+
     # eBay (scrape_ebay already stores + dedupes internally)
     ebay_new = await scrape_ebay()
-    
-    # Discord alerts to separate channels
-    if mercari_new:
-        send_discord_alert(mercari_new, webhook=DISCORD_WEBHOOK)
-    print(f"  DEBUG ebay_new at send = {len(ebay_new)}")
-    if ebay_new:
-        send_discord_alert(ebay_new, webhook=DISCORD_WEBHOOK_EBAY)
-    
-    print(f"Done. {len(mercari_new)} Mercari, {len(ebay_new)} eBay new items.")
+
+    # Alert phase: everything above only STORES items (flagged is_new=True).
+    # The sweep alerts all pending rows — including any left behind by a
+    # previous run that crashed or hung between storing and alerting — and
+    # clears the flag only after Discord accepts each message. Channel routing
+    # is by seller: eBay -> DISCORD_WEBHOOK_EBAY, everything else -> DISCORD_WEBHOOK.
+    sent = sweep_and_alert()
+
+    print(f"Done. {len(mercari_new)} Mercari, {len(yahoo_new)} Yahoo, "
+          f"{len(jdflea_new)} JDFlea, {len(ebay_new)} eBay new; {sent} alerts sent.")
 
 if __name__ == "__main__":
     asyncio.run(main())
